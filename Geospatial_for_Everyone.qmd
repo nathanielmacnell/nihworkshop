@@ -1,0 +1,508 @@
+---
+title: "Geospatial for Everyone"
+author: "Nathaniel MacNell, Ian Buller"
+format: pdf
+editor: visual
+---
+
+# Enhancing your "Non-Spatial" Research with Geospatial Data
+
+A free workshop for the [2025 NIH Research Festival](https://researchfestival.nih.gov/) presented by [Ian Buller](https://github.com/idblr) and [Nat MacNell](mailto:nathaniel.macnell@dlhcorp.com) from [DLH](https://www.dlhcorp.com/).
+
+Contact us with any questions: - nathaniel.macnell\@dlhcorp.com - ian.buller\@dlhcorp.com
+
+If you're reading a PDF copy, the interactive version can be found here: <https://github.com/nathanielmacnell/nihworkshop/> - You'll need a free Google account to use the interactive version.
+
+## 🚀 START HERE!
+
+You're reading the .qmd version designed to be run from your local install of RStudio.
+
+```{r}
+
+# download the libraries (change install to TRUE)
+install = FALSE
+if(install) {
+  install.packages('classInt')
+  install.packages('units')
+  install.packages("sf")
+  install.packages("ggplot2")
+  install.packages("dplyr")
+  install.packages('tigris')
+  install.packages('spdep')
+
+}
+
+# load libraries
+library(sf)
+library(ggplot2)
+library(dplyr)
+library(tigris)
+library(spdep)
+```
+
+```         
+Linking to GEOS 3.12.1, GDAL 3.8.4, PROJ 9.3.1; sf_use_s2() is TRUE
+
+
+Attaching package: ‘dplyr’
+
+
+The following objects are masked from ‘package:stats’:
+
+    filter, lag
+
+
+The following objects are masked from ‘package:base’:
+
+    intersect, setdiff, setequal, union
+
+
+To enable caching of data, set `options(tigris_use_cache = TRUE)`
+in your R script or .Rprofile.
+```
+
+## 🌎 Background
+
+### Why use geospatial data?
+
+We can increase the value of data we already have, by linking it to public-domain information using geographic identifiers. For example, a clinical research study about an off-label use of a drug could add:
+
+-   **Effect-measure modifiers** - are there contexts in which the drug is more effective?
+-   **Covariates** - how does the study population compare to the target population?
+-   **Confounders** - are there factors that could bias effect estimates?
+-   **Exclusions** - should some observations be removed from consideration?
+
+We can also look at additional uses of geostatistical methods: - **Clustering** - are nearby observations similar, and does it matter? - **Aggregation** - can we understand at a problem at different levels? - **Imputation** - can we fill in missing values using spatial context?
+
+### Tools of the trade
+
+There are a few languages with geospatial packages that are particularly helpful: - **R** - ***sf***, ***terra***, and ***ggplot2*** packages - **Python** - ***geopandas***, ***rasterio***, and ***matplotlib*** libraries
+
+You can also use desktop GUI programs like ESRI's ArcGIS or the free equivalent [QGIS](https://qgis.org/), but these are much more helpful if you are creating or editing geospatial data, rather than analyzing it.
+
+You'll come across many kinds of geospatial data formats, here are some of the most common:
+
+Data type | Comments 
+----------|---
+ .csv     | The most basic type, literally just comma-separated values with latitude and longitude coordinates. 
+shapefile | The legacy geospatial data type, originally designed by ESRI in an era where computers worked very differently than they do today. You need multiple files with the same name that store different parts of the data.
+.gdb      | Geodatabase, ESRI's approach to bundling shapefiles.                                                  .kml     | A more modern file format from Google. It's XML-based, so you can open it up in a text editor and it's widely compatible.                                                                                          GeoJSON   | Another modern format, similar to kml but based on JSON instead of XML.                             
+.GeoTIFF  | A plain image with extra geospatial data embedded in it. These can often be inspected in a standard image viewer. 
+
+Today we're starting with R and .csv because they are the easiest to use and give us the best view of what's going on "behind the curtain".
+
+## 🧩 Basics
+
+### R
+
+-   R uses a sequence of expressions with no line-end character
+-   Lines starting with \# are comments and are not executed.
+-   The core concept is the function, which takes arguments (seperated by commas) and returns one result.
+
+```{r}
+ # example: add some numbers
+ sum(1,2,3,4,5)
+```
+-   You can also use mathematical operators as expected
+
+```{r}
+1+2+3+4+5
+```
+
+-   To store results, use an equation or assignment arrow. Otherwise, the results will be printed out immediately.
+
+```{r}
+task = "learn about uses of geospatial data"
+task  # print the result
+```
+
+'learn about uses of geospatial data'
+
+```{r}
+text <- "this also works"
+print(text)
+```
+
+-   Arguments can optionally be named using =, and outputs of functions can be chained together.
+
+```{r}
+x = rnorm(mean=0, sd=1, n=1000) + rnorm(mean=2, sd=1, n=1000)
+head(x)  # print first 5 values
+hist(x)  # make a histogram
+```
+
+We'll see more examples of R below. The free [W3Schools interactive tutorial](https://www.w3schools.com/r/) is a great place to start if you want to learn more about R.
+
+## 📂 Opening data
+
+Let's start with geospatial data in a simple format. The Neighborhood Deprivation Index (NDI) contains many useful sociodemographic covariates summarized at the census tract level.
+
+```{r}
+# download geospatial data example
+download.file('https://gis.cancer.gov/research/NeighDeprvIndex_USTracts.csv',
+destfile='ndi.csv')
+
+# inspect the file in our working directory (you should see "ndi.csv")
+list.files(getwd())
+```
+Now that we've downloaded and unzipped the file, we can import it into an object in R. The read.csv() function used here will handle most kinds of geospatial data files. There are R packages available to handle other kinds of geospatial data - check out [CRAN](https://cran.r-project.org/web/views/Spatial.html) for more info.
+
+```{r}
+ndi = read.csv('ndi.csv')
+
+# verify import, notice that this is currently just a regular dataset
+head(ndi)
+```
+
+
+### Making it spatial
+
+How do we get the data to be "geospatial"? We'll need to add information about the geographic shapes of each of these rows (census tracts). Fortunately we can grab this information easily from the Census Bureau using the tigris package. We'll just look at one state to make things simple.
+
+```{r}
+# first, cache (store) temporary results so we don't annoy the census bureau
+# with many download requests if we need to run our code multiple times
+options(tigris_use_cache = TRUE)
+
+# next, get the data for maryland
+md_tracts = tracts(year=2017, state='MD', cb=TRUE)
+
+# inspect the top of the data frame, we use data.frame to show head()
+# that we want to treat it as a data.frame (a tabular dataset)
+head(data.frame(md_tracts))
+```
+
+```{r}
+
+# convert type to match
+ndi$TractID = as.character(ndi$TractID)
+
+# check types
+print(class(ndi$TractID))
+print(class(md_tracts$GEOID))
+
+# how many maryland tracts are in the id list
+table(md_tracts$GEOID %in% ndi$TractID)  # looks good
+```
+
+Now, we can left-join the ndi data to the md_tracts. Left-join means that all records on the left (first) side form the basis for the dataset and the records on the right side are matched if possible (and dropped if not).
+
+```{r}
+# join dataset
+md_ndi = left_join(
+  md_tracts,
+  ndi,
+  by = join_by(GEOID==TractID)
+)
+
+# inspect difference in new dataset (27 vs 10 variables)
+dim(md_tracts)
+dim(md_ndi)
+```
+
+We're linked!
+
+## 🔎 Inspecting data
+
+Now that our dataset is set up, let's see what's there. [The codebook](https://www.gis.cancer.gov/research/NeighDeprvIndex_Codebook.pdf) has detailed descriptions of these variables. Notice that we still have some additional variables that were present in the census tract dataset.
+
+```{r}
+# inspect variable names
+names(md_ndi)
+```
+
+The dataset is too large to look at all at once, so we'll just inspect the first few rows to get a sense of the data. Notice that the geospatial data for each census tract is stored in the final variable called geometry (the data type for this column is MULTIPOLYGON) but only the first coordinate value is displayed in this view.
+
+```{r}
+options(repr.matrix.max.cols = 100)  # override the default, and show all cols
+head(data.frame(md_ndi))
+```
+
+### Geometry
+
+What's actually "in" this mysterious `geometry` variable? Let's take a quick look at the first observation, using `$` to specify a variable and `[[1]]` to grab its first value.
+
+```{r}
+md_ndi$geometry[[1]]
+```
+
+
+It appears to be a sequence of coordinate values. Let's explore a bit further and see if we can plot them. We'll use better tools to do this below, but it's nice to see that there's nothing "magic" going on here.
+
+```{r}
+# extract one value
+raw_data = unlist(md_ndi$geometry[[1]]) # force the object into a vector
+n = length(raw_data)                    # find the length
+x = raw_data[1:(n/2)]                   # the first half is the longitude (x)
+y = raw_data[(n/2 + 1):n]               # the second half is the latitude (y)
+
+# plot as lines connecting points
+options(repr.plot.width = 8, repr.plot.height = 8)
+plot(x,y, type='b')
+```
+
+
+### Distributions
+
+The md_ndi object that we created acts like a normal R dataset. For instance, we can look at the histogram of any of these variables using ggplot.
+
+It's worth noting a few things about the syntax for ggplot() because we'll be using it below to create some maps:
+
+-   The main ggplot() call specifies the data we want to plot.
+-   geom_histogram() specifies the graph style.
+-   aes() specifies the aesthetics of the graph: how variables in the dataset are used (i.e. the x-axis is set to the NDI value).
+-   binwidth sets the graph to show small increments (size 0.1).
+-   labs() adds labels to elements of the graph.
+-   Notice that we've broken the code up into multiple lines by giving incomplete lines ending in + that R combines.
+-   Also notice we get a warning message about "non-finite values" being removed - this is R warning us that there are missing values not being plotted (this is okay, but it's good that R tells us about it)
+
+```{r}
+ggplot(md_ndi) +
+  geom_histogram(aes(x=NDI), binwidth=0.1) +
+  labs(title='Figure 1: Distribution of NDI', x='Neighborhood Deprivation Index')
+```
+
+## 🌐 Mapping
+
+To create a map, we just need to change the graph options: \* We first set options to increase the size of our plot window, to get a larger figure with more detail. If you right-click the figure and open it in a new tab you can see it at full size. \* The type of graph geometry is now geom_sf, meaning spatial feature \* Instead of assigning the variable to the x-axis coordinate, we use it to determine the fill color. \* We set the line color for the plot to NA (missing) to prevent the lines from drawing on top of the fill colors, so we can see them better. \* There aren't colors for areas without mail delivery or for which the variables could not be calculated due to low population (e.g. Western U.S. and Alaska), and these default to transparent.
+
+```{r}
+options(repr.plot.width = 12, repr.plot.height = 8)
+ggplot(md_ndi) +
+  geom_sf(aes(fill=NDI), color=NA) +
+  labs(title='Figure 2: Distribution of NDI in MD')
+```
+
+## ➕ Deriving variables
+
+Maps can be useful for understanding your data, but how do we integrate these variables into analysis models?
+
+Typically, you'll start from residential addresses in your study that you geocode using a secure geocoder like [DeGAUSS](https://degauss.org/). The geocoding process takes a residential address and looks up the corresponding geographic coordinates (longitude=X and latitude=Y). There are privacy protection concerns at this step, so it is performed in a secure and protected computing environment.
+
+You can see what a geocoder does by trying out the [Census Geocoder](https://geocoding.geo.census.gov/geocoder/locations/onelineaddress?form).
+
+### Simulate a cohort
+
+For this activity, we'll pretend that you've already passed the study addresses through a geocoder and have latitude and longitude coordinates for each participant. We'll simulate a basic cohort study dataset to mimic what you might start with before doing the geographic linkage.
+
+```{r}
+# simulate a study area
+study_area = st_union(st_geometry(md_tracts))
+plot(study_area)
+```
+
+
+```{r}
+# simulate a study sample
+N = 10000
+study_sample = st_sample(study_area, size=N)
+
+study_data = st_sf(
+  data.frame(id=1:N),
+  geometry=study_sample
+)
+
+# plot points on the same map
+plot(study_area)
+plot(study_sample, add=TRUE, pch='.')
+```
+
+### Link data
+
+Next, let's link the geospatial data to our cohort. Notice that we have an id number for each participant on the left, and the rest of the data corresponds to the information from the census tract within which that person is located.
+
+```{r}
+linked = st_join(study_data, md_ndi)
+head(data.frame(linked))
+```
+
+## 🧪 Study Impacts
+
+### Simulate a trial
+
+To see how this would affect a real study, let's give our cohort some additional study data and simulate a treatment and outcomes.
+
+For this demonstration, we'll assume a simple causal model where our exposure in influenced by ndi and the outcome is influenced by ndi and the exposure. \* This is similar to how in an RCT, treatment assignment is randomized but actual treatment can't be effectively randomized because we can't directly control adherence (the intent-to-treat and as-treated effects differ). \* We'll model treatment effect as having a fixed value, in reality, the treatment effect different for each person, and we're aiming to estimate various versions of the "mean" effect in different populations (i.e. among the cohort, the treated, standardized to a specific population, etc.).
+
+```{r}
+# ## Set simulation parameters
+# We'll start out with a bit of an "extreme" effect of the confound for illustration
+# you can try changing the parameters in this section to see how it affects
+# the bias of the crude model.
+base_exposure_odds = 0.2      # base odds of exposure
+base_outcome_odds = 0.2       # base odds of outcome
+exposure_or = 2               # odds ratio: exposure -> outcome
+ndi_exposure_or = 2           # odds ratio: ndi -> expoxure
+ndi_or = 3                    # odds ration: ndi -> outcome
+
+
+# create simulated data
+cohort = data.frame(
+  id=1:N,
+  ndi = linked$NDI) %>%
+
+  # drop observations without an NDI value
+  filter(!is.na(ndi)) %>%
+
+  # add other data
+  mutate(
+
+    # transform ndi into a binary variable for simplicity
+    # ndi=1 means that the ndi is worse, 0 is better
+    ndi = ndi > mean(ndi),
+
+    # exposure assignment is based on ndi
+    # (twice as likely for high NDI)
+    exposure_odds = exp(
+      log(base_exposure_odds) +
+      log(ndi_exposure_or)*ndi),
+    exposure_probability = exposure_odds / (1+exposure_odds),
+    exposure = rbinom(p=exposure_probability, size=1, n=n()),
+
+    # outcome is based on ndi and exposure
+    outcome_odds = exp(
+      log(base_outcome_odds) +
+      log(exposure_or)*exposure +
+      log(ndi_or)*ndi),
+    outcome_probability = outcome_odds / (1+outcome_odds),
+    outcome = rbinom(p=outcome_probability, size=1, n=n())
+
+  )
+
+# inspect the data structure
+head(cohort, n=15)
+```
+
+### 🪨 Crude model
+
+Let's take a look at our data and some crude models with no adjustment for spatial information. Notice that the 95% confidence interval is not centereed on the actual effect odds ratio.
+
+```{r}
+crude_model = glm(outcome==1 ~ exposure, data=cohort, family=binomial('logit'))
+summary(crude_model)
+
+cat('\nTarget Odds Ratio:',exposure_or,'\n')
+cat('\n\nOdds Ratios:\n')
+exp(coef(crude_model))
+exp(confint(crude_model))
+```
+
+### 💎 Adjusted model
+
+What happens if we adjust for our spatial covariate, ndi? We can see that the estimate is closer to the true value set in the simulation.
+
+```{r}
+adjusted_model = glm(outcome==1 ~ exposure + ndi, data=cohort, family=binomial('logit'))
+summary(adjusted_model)
+
+cat('\nTarget Odds Ratio:',exposure_or,'\n')
+cat('\n\nOdds Ratios:\n')
+exp(coef(adjusted_model))
+exp(confint(adjusted_model))
+```
+
+### 💕 Matching
+
+An alternate approach to covariate adjusment is to match participants with similar geospatial values when making comparisons. This is particularly effective when you want to match on multiple geospatial variables, because if you can compare neighbors you know what all geospatial elements are by definition similar. This means that the approach also adjusts for for ***unmeasured*** geospatial covariates, an idea that is leveraged in many geostatistical methods.
+
+```{r}
+# link the geospatial information ("linked") to our study dataset by ID
+cohort_spatial = cohort %>%
+  left_join(linked, by='id')
+
+# see participant sets living in the same areas
+groups = cohort_spatial %>%
+  select(id, GEOID) %>%
+  group_by(GEOID) %>%
+  summarize(ids = paste(id, collapse=', '), n=n())
+
+head(groups, n=15)
+
+# look at the number of participants in each geographical area
+# note that we link back to the polygon-based census tract file
+groups_by_map = md_tracts %>%
+  left_join(groups, by='GEOID')
+
+
+options(repr.plot.width = 12, repr.plot.height = 8)
+ggplot(groups_by_map) +
+  geom_sf(aes(fill=n)) +
+  labs(title="Figure 3: Number of Participants per Census Tract")
+```
+
+For this illustration we'll show a generalization of matching: stratification. Instead of splitting the cohort into many 2-person groups, we'll just use each geographic area as a group and run the comparison across groups ('strata').
+
+```{r}
+cohort_with_strata = cohort %>%
+  # join the geospatial identifiers
+  left_join(linked %>% select(GEOID, id), by='id') %>%
+  # join info about groups
+  left_join(groups_by_map %>% select(GEOID, n), by='GEOID') %>%
+  # filter to areas with at least 5 participants to simplify model fit
+  filter(n>=5)
+
+# fit the stratified model using glm. Realistically, you would want to use
+# a specialized fixed-effects estimation R package like lme4
+stratified_model = glm(outcome==1 ~ exposure + factor(GEOID),
+  data=cohort_with_strata,
+  family=binomial('logit'))
+
+summary(stratified_model)
+
+# This shows all of the effects of the individual census tracts.
+# Notice that the estimate for "exposure" is still pretty accurate,
+# even though we aren't explicitly modeling ndi in the model but instead are
+# stratifying by the geographic identifier
+cat('\nTarget Odds Ratio:',exposure_or,'\n')
+cat('\n\nOdds Ratios:\n')
+exp(coef(stratified_model))
+```
+
+# 📖 Further Reading
+
+## 🌳 Geostatistics
+
+Geostatistics assess variables across space. For example, do neighboring census tracts have similar values of ndi? This can be used to assess model assumptions like the independence of observations (i.e. clustering).
+
+### Moran's I
+
+Moran's I is an example of an overall summary statistic that assess the degree of autocorrelation present in in the data.
+
+```{r}
+# create "complete" dataset (fill in ndi values that are missing)
+md_complete = md_ndi %>% mutate(NDI = ifelse(is.na(NDI), mean(NDI, na.rm=TRUE), NDI))
+
+# calculate neighbors
+nb <- poly2nb(md_complete, queen=TRUE)
+# calculate neighbor weights
+lw <- nb2listw(nb, style="W", zero.policy=TRUE)
+# calculate Moran's I and test statistic
+moran(md_complete$NDI, lw, length(nb), Szero(lw))
+moran.test(md_complete$NDI, lw)
+```
+
+### G and Gstar
+
+These statistics are local - you can plot them on a map. They show clustering "hot" and "cold" spots.
+
+```{r}
+md_complete$G = localG(md_complete$NDI, listw=lw)
+ggplot(md_complete) +
+  geom_sf(aes(fill=as.numeric(G))) +
+  scale_fill_gradient2(low = "blue", mid = "white", high = "red", midpoint = 0) +
+  labs(fill='G Statistic')
+```
+## 🟦 Raster Data
+
+So far, we've looked at spatial data stored as point and polygons. Rasters are another format of geospatial data consisting of a complete grid of observations. They are commonly used for data derived from satellite imagery.
+
+## 🐺 Running on NIH HPC (Biowulf)
+
+Since this is a Jupyter notebook, you can run this code on the NIH HPC using [the instructions here](https://hpc.nih.gov/apps/jupyter.html).
+
+The basic procedure is:
+
+1.  Sign up for a Biowulf account.
+2.  From the login node, run an interactive job (e.g. sinteractive --tunnel).
+3.  Copy the resulting tunnel and connect to the assigned node.
+4.  Start Jupyter Lab and navigate to the resulting notebook URL.
