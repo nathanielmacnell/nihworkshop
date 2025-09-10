@@ -1,5 +1,5 @@
 # Geospatial for Everyone 
-![DLH](DLH%20logo%202.png?raw=true)
+![DLH](data/DLH%20logo%202.png?raw=true)
 
 Home page for the geospatial data workshop at the 2025 NIH Research Festival presented by DLH.
 
