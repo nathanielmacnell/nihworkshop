@@ -4,3 +4,5 @@
 Home page for the geospatial data workshop at the 2025 NIH Research Festival presented by DLH.
 
 Get started with [the cloud version](https://github.com/nathanielmacnell/nihworkshop/blob/main/Geospatial_for_Everyone.ipynb) (click "Open in Colab" on top) or run the [RStudio version](https://github.com/nathanielmacnell/nihworkshop/blob/main/Geospatial_for_Everyone.qmd) locally.
+
+Take a look at [examples](https://github.com/nathanielmacnell/nihworkshop/tree/main/examples) of how we've helped NIH researchers  use geospatial linkages in their research.
