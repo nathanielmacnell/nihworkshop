@@ -7,4 +7,4 @@ Get started with [the cloud version](https://github.com/nathanielmacnell/nihwork
 
 Take a look at [examples](https://github.com/nathanielmacnell/nihworkshop/tree/main/examples) of how we've helped NIH researchers  use geospatial linkages in their research.
 
-***If you're have trouble downloading the census tract data (possibly because you're on a guest network), see [the instructions here](https://github.com/nathanielmacnell/nihworkshop/blob/main/md_download.R)***
+***If you're having trouble downloading the census tract data (possibly because you're on a guest network), see [the instructions here](https://github.com/nathanielmacnell/nihworkshop/blob/main/md_download.R)***
